@@ -1,0 +1,166 @@
+# Anomaliz — Anomaly Detection System
+
+## Overview
+
+This project implements an end-to-end anomaly detection pipeline on time series data using an unsupervised approach (Isolation Forest).
+
+The goal is to detect anomalous patterns from sliding windows of data, with a strong focus on evaluation and threshold calibration.
+
+The project emphasizes data quality, evaluation methodology, and the impact of threshold calibration on model performance.
+
+---
+
+## Pipeline
+
+The system follows a structured pipeline:
+
+1. Data generation / loading
+2. Windowing (sliding windows)
+3. Feature flattening
+4. Model training (Isolation Forest)
+5. Anomaly scoring
+6. Threshold selection (validation)
+7. Final evaluation (test set)
+8. Artifact generation
+
+### Pipeline Overview
+
+```text
+Raw Data
+   ↓
+Windowing (sliding windows)
+   ↓
+Flattening
+   ↓
+Isolation Forest
+   ↓
+Anomaly Scores
+   ↓
+Threshold Tuning (validation)
+   ↓
+Final Evaluation (test)
+   ↓
+Artifacts (metrics, threshold, metadata)
+```
+
+---
+
+## Data and Modeling Insights
+
+### Impact of window labeling strategy
+
+The initial window labeling strategy considered a window anomalous if any point inside it was anomalous.
+
+This led to an artificially high anomaly rate and overly optimistic performance:
+
+- F1 ≈ 0.93  
+- ROC-AUC ≈ 0.97  
+
+However, this setup was unrealistic, as most windows were labeled as anomalous.
+
+After switching to a **last-point labeling strategy** (label = last element of the window):
+
+- F1 dropped to ~0.78  
+- ROC-AUC dropped to ~0.66  
+
+This reflects a more realistic and challenging anomaly detection problem.
+
+This highlights the importance of proper dataset construction in time series anomaly detection.
+
+---
+
+### Impact of anomaly rate
+
+Reducing anomaly probability to obtain a more realistic class balance (~8% anomalies) significantly changed model behavior:
+
+- ROC-AUC increased to ~0.93  
+- Recall remained high (~0.87)  
+- Precision dropped (~0.43)  
+- F1 ≈ 0.57  
+
+This demonstrates the typical trade-off in imbalanced anomaly detection:
+
+- High recall ensures most anomalies are detected  
+- Lower precision reflects increased false positives  
+
+In real-world anomaly detection systems (e.g. cybersecurity), high recall is often prioritized to avoid missing critical events.
+
+---
+
+## Evaluation and Threshold Tuning
+
+The pipeline separates:
+
+- model training  
+- threshold selection (validation)  
+- final evaluation (test)
+
+### Threshold tuning
+
+The decision threshold is selected using a sweep on the validation set, optimizing F1-score.
+
+Example:
+
+```text
+threshold = 0.16
+```
+
+---
+
+### Final evaluation (test set)
+
+- Precision: 0.43  
+- Recall: 0.87  
+- F1-score: 0.57  
+- ROC-AUC: 0.93  
+
+The threshold generalizes well from validation to test.
+
+---
+
+### Impact of threshold calibration
+
+Using a fixed threshold (0.50) initially led to poor performance:
+
+- Precision: 0.55  
+- Recall: 0.21  
+- F1-score: 0.30  
+
+After calibration:
+
+- Recall increased significantly  
+- F1 improved  
+- The model became usable in practice  
+
+This shows that performance was primarily limited by threshold selection rather than model capacity.
+
+---
+
+## Key Takeaways
+
+- Dataset construction strongly impacts anomaly detection performance  
+- Window labeling strategy can artificially inflate results  
+- Threshold calibration is critical for real-world usability  
+- High ROC-AUC does not guarantee good classification performance  
+- Imbalanced data introduces a natural precision / recall trade-off  
+
+---
+
+## How to run
+
+```bash
+python -m anomaliz.training.cli --out artifacts/dev/1
+```
+
+---
+
+## Project structure
+
+```text
+anomaliz/
+├── config/
+├── preprocessing/
+├── training/
+├── detection/
+├── artifacts/
+```

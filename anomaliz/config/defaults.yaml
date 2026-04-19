@@ -1,0 +1,34 @@
+seed: 42
+
+data:
+  n_points: 2000
+  window_size: 10
+  train_ratio: 0.6
+  val_ratio: 0.2
+  anomaly_probability: 0.005
+
+model:
+  isolation_forest:
+    n_estimators: 100
+    contamination: 0.05
+    random_state: 42
+  lstm_autoencoder:
+    units_1: 64
+    units_2: 32
+    dropout: 0.2
+    learning_rate: 0.001
+    epochs: 20
+    batch_size: 32
+    patience: 5
+    threshold_k: 2.5
+
+detection:
+  tuning:
+    n_thresholds: 101
+  fusion:
+    weight_if: 0.3
+    weight_lstm: 0.7
+
+api:
+  host: "0.0.0.0"
+  port: 8000

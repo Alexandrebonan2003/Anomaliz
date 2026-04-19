@@ -10,8 +10,9 @@ __pycache__/
 venv/
 .venv/
 
-data/
-models/
+/data/
+/models/
+artifacts/
 
 .ipynb_checkpoints/
 
