@@ -8,6 +8,7 @@ This plan delivers a **strict MVP-first** build:
 
 - Phase 1 is a true minimal end-to-end path: one detector, one pipeline, one bundle, one API — fast to implement, easy to debug, low in dependency weight.
 - Additional detectors, fusion, the LLM agent, tracking, Docker, and dashboards are layered on in distinct later phases.
+- Phase 2.5 hardens the DL block (strict normal-only training, early stopping, dropout, capacity/window ablations), adds multi-seed evaluation, and introduces a single forecasting-based detector to compare reconstruction vs. forecasting — without expanding the architecture surface.
 - The architectural invariants (config-driven hyperparameters, training/serving separation via artifact bundle, `Detector` protocol) are established in Phase 1 so that later phases add code without reshaping the system.
 
 Confirmed scoping decisions:
@@ -40,6 +41,7 @@ anomaliz/
   models/
     isolation_forest.py   # IFDetector (Phase 1)
     lstm_autoencoder.py   # LSTMAutoencoder (Phase 2)
+    lstm_forecaster.py    # LSTMForecaster (Phase 2.5)
   detection/
     scorer.py             # decide() (Phase 1); fuse() added in Phase 2
     threshold.py          # threshold utilities
@@ -153,6 +155,35 @@ Deliverables:
 - Training pipeline extended: step 5a fit LSTM, step 5b derive LSTM threshold from val errors, step 6 evaluate each detector and the fused scorer.
 - `/analyze` now selects `model_used` based on which detector contributed more.
 - Bundle gains `lstm_autoencoder/` and LSTM-specific threshold stats.
+
+### Phase 2.5 — DL hardening + forecasting baseline
+
+**Goal.** Turn the Phase 2 LSTM autoencoder from a valid baseline into a methodologically credible DL block, and add a single forecasting-based detector so we can compare two formulations of the anomaly detection problem: reconstruction vs. forecasting. No large refactor, no extra architectures, no Transformer/attention.
+
+**Scope — harden the existing LSTM autoencoder:**
+- Enforce strict training on normal-only windows (explicit filter before fit; assert in tests).
+- Proper early stopping on a held-out validation split of normal windows (patience + `restore_best_weights`).
+- Better dropout usage (input + recurrent dropout) exposed in config.
+- Targeted ablations on latent size / model capacity and on window size, run from the training CLI with a `--sweep` mode; results aggregated in `metrics.json`.
+
+**Scope — multi-seed evaluation:**
+- Run the full training pipeline across N seeds (configurable, default 5) for IF, LSTM AE, and the new forecaster.
+- Aggregate per-metric mean ± std in `metrics.json`; reject claims of DL improvement that don't hold across seeds.
+- Keep a single "reference" bundle for serving (first seed) to preserve the bundle contract; the aggregated table is additive.
+
+**Scope — forecasting baseline:**
+- `LSTMForecaster` in [models/lstm_forecaster.py](../../Anomaliz/anomaliz/models/lstm_forecaster.py) implementing `Detector`: trained on normal windows to predict the next step(s); anomaly score derived from forecast residuals, normalized to `[0,1]`.
+- Threshold derived the same way as the autoencoder (val-set residual quantile).
+- Reuses existing normalizer, windowing, and threshold utilities — no new abstractions.
+
+**Out of scope:** Transformer/attention, new protocols, fusion changes, new API fields, architecture zoo.
+
+**Deliverables:**
+- Hardened LSTM AE with early stopping, stricter training protocol, and capacity/window ablations.
+- `LSTMForecaster` as the second DL variant.
+- Multi-seed evaluation table comparing IF / LSTM-AE / LSTM-Forecaster (F1, ROC AUC, precision, recall — mean ± std).
+- A short conclusion block in `metrics.json` (`comparison_summary`) stating which approach actually adds value over the ML baseline and which doesn't.
+- Bundle gains `lstm_forecaster/` and forecaster-specific threshold stats; `metadata.json` records seed list and sweep config.
 
 ### Phase 3 — LangGraph agent
 

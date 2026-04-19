@@ -1,11 +1,13 @@
 seed: 42
 
 data:
-  n_points: 2000
+  n_points: 8000
   window_size: 10
   train_ratio: 0.6
   val_ratio: 0.2
   anomaly_probability: 0.005
+  min_anomaly_rate: 0.03
+  max_anomaly_rate: 0.25
 
 model:
   isolation_forest:
@@ -16,11 +18,29 @@ model:
     units_1: 64
     units_2: 32
     dropout: 0.2
+    recurrent_dropout: 0.0
     learning_rate: 0.001
     epochs: 20
     batch_size: 32
     patience: 5
+    val_split: 0.1
     threshold_k: 2.5
+  lstm_forecaster:
+    units: 32
+    dropout: 0.2
+    recurrent_dropout: 0.0
+    learning_rate: 0.001
+    epochs: 20
+    batch_size: 32
+    patience: 5
+    val_split: 0.1
+    threshold_k: 2.5
+
+evaluation:
+  seeds: [42, 43, 44, 45, 46]
+  ablation:
+    units_2: [16, 32, 64]
+    window_size: [10, 20]
 
 detection:
   tuning:

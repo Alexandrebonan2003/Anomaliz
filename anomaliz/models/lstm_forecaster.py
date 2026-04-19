@@ -6,11 +6,13 @@ from pathlib import Path
 import numpy as np
 
 
-class LSTMAutoencoder:
+class LSTMForecaster:
+    """Forecasting-based detector: predict the last timestep of each window
+    from the prefix and score anomalies by forecast residual magnitude."""
+
     def __init__(
         self,
-        units_1: int = 64,
-        units_2: int = 32,
+        units: int = 32,
         dropout: float = 0.2,
         recurrent_dropout: float = 0.0,
         learning_rate: float = 1e-3,
@@ -21,8 +23,7 @@ class LSTMAutoencoder:
         random_state: int = 42,
     ) -> None:
         self.params = {
-            "units_1": units_1,
-            "units_2": units_2,
+            "units": units,
             "dropout": dropout,
             "recurrent_dropout": recurrent_dropout,
             "learning_rate": learning_rate,
@@ -38,42 +39,21 @@ class LSTMAutoencoder:
         self._err_min: float | None = None
         self._err_max: float | None = None
 
-    def _build(self, window_size: int, n_features: int):
+    def _build(self, input_len: int, n_features: int):
         import tensorflow as tf
         from tensorflow import keras
         from tensorflow.keras import layers
 
         tf.random.set_seed(self.params["random_state"])
-        rec_drop = self.params["recurrent_dropout"]
-        drop = self.params["dropout"]
 
-        inp = keras.Input(shape=(window_size, n_features))
+        inp = keras.Input(shape=(input_len, n_features))
         x = layers.LSTM(
-            self.params["units_1"],
-            return_sequences=True,
-            dropout=drop,
-            recurrent_dropout=rec_drop,
-        )(inp)
-        x = layers.LSTM(
-            self.params["units_2"],
+            self.params["units"],
             return_sequences=False,
-            dropout=drop,
-            recurrent_dropout=rec_drop,
-        )(x)
-        x = layers.RepeatVector(window_size)(x)
-        x = layers.LSTM(
-            self.params["units_2"],
-            return_sequences=True,
-            dropout=drop,
-            recurrent_dropout=rec_drop,
-        )(x)
-        x = layers.LSTM(
-            self.params["units_1"],
-            return_sequences=True,
-            dropout=drop,
-            recurrent_dropout=rec_drop,
-        )(x)
-        out = layers.TimeDistributed(layers.Dense(n_features))(x)
+            dropout=self.params["dropout"],
+            recurrent_dropout=self.params["recurrent_dropout"],
+        )(inp)
+        out = layers.Dense(n_features)(x)
 
         model = keras.Model(inp, out)
         model.compile(
@@ -82,15 +62,22 @@ class LSTMAutoencoder:
         )
         return model
 
-    def fit(self, X: np.ndarray) -> "LSTMAutoencoder":
+    @staticmethod
+    def _split_xy(W: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        W = np.asarray(W, dtype=np.float32)
+        if W.ndim != 3:
+            raise ValueError("LSTMForecaster expects 3D windows (batch, timesteps, features)")
+        if W.shape[1] < 2:
+            raise ValueError("LSTMForecaster requires window_size >= 2")
+        return W[:, :-1, :], W[:, -1, :]
+
+    def fit(self, W: np.ndarray) -> "LSTMForecaster":
         from tensorflow import keras
 
-        X = np.asarray(X, dtype=np.float32)
-        if X.ndim != 3:
-            raise ValueError("LSTMAutoencoder expects 3D windows (batch, timesteps, features)")
-        self._window_size = int(X.shape[1])
-        self._n_features = int(X.shape[2])
-        self._model = self._build(self._window_size, self._n_features)
+        X, y = self._split_xy(W)
+        self._window_size = int(W.shape[1])
+        self._n_features = int(W.shape[2])
+        self._model = self._build(X.shape[1], self._n_features)
 
         val_split = float(self.params["val_split"])
         use_val = val_split > 0.0 and X.shape[0] >= 4
@@ -108,7 +95,7 @@ class LSTMAutoencoder:
 
         self._model.fit(
             X,
-            X,
+            y,
             epochs=self.params["epochs"],
             batch_size=self.params["batch_size"],
             validation_split=val_split if use_val else 0.0,
@@ -117,29 +104,29 @@ class LSTMAutoencoder:
             callbacks=callbacks,
         )
 
-        errors = self._reconstruction_error(X)
+        errors = self._residuals(W)
         self._err_min = float(errors.min())
         self._err_max = float(errors.max())
         return self
 
-    def reconstruction_error(self, X: np.ndarray) -> np.ndarray:
+    def forecast_residuals(self, W: np.ndarray) -> np.ndarray:
         if self._model is None:
-            raise RuntimeError("Detector must be fit before reconstruction_error")
-        X = np.asarray(X, dtype=np.float32)
-        return self._reconstruction_error(X)
+            raise RuntimeError("Detector must be fit before forecast_residuals")
+        return self._residuals(np.asarray(W, dtype=np.float32))
 
-    def _reconstruction_error(self, X: np.ndarray) -> np.ndarray:
-        recon = self._model.predict(X, verbose=0)
-        return np.mean(np.abs(X - recon), axis=(1, 2))
+    def _residuals(self, W: np.ndarray) -> np.ndarray:
+        X, y = self._split_xy(W)
+        pred = self._model.predict(X, verbose=0)
+        return np.mean(np.abs(y - pred), axis=1)
 
     def set_error_range(self, err_min: float, err_max: float) -> None:
         self._err_min = float(err_min)
         self._err_max = float(err_max)
 
-    def score(self, X: np.ndarray) -> np.ndarray:
+    def score(self, W: np.ndarray) -> np.ndarray:
         if self._model is None or self._err_min is None or self._err_max is None:
             raise RuntimeError("Detector must be fit before scoring")
-        errors = self._reconstruction_error(np.asarray(X, dtype=np.float32))
+        errors = self._residuals(np.asarray(W, dtype=np.float32))
         span = self._err_max - self._err_min
         if span <= 0:
             span = 1.0
@@ -164,7 +151,7 @@ class LSTMAutoencoder:
         )
 
     @classmethod
-    def load(cls, path: Path) -> "LSTMAutoencoder":
+    def load(cls, path: Path) -> "LSTMForecaster":
         from tensorflow import keras
 
         path = Path(path)

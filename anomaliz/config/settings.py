@@ -12,11 +12,13 @@ ENV_PREFIX = "ANOMALIZ__"
 
 
 class DataConfig(BaseModel):
-    n_points: int = 2000
+    n_points: int = 8000
     window_size: int = 10
     train_ratio: float = 0.6
     val_ratio: float = 0.2
-    anomaly_probability: float = 0.05
+    anomaly_probability: float = 0.005
+    min_anomaly_rate: float = 0.03
+    max_anomaly_rate: float = 0.25
 
 
 class IFConfig(BaseModel):
@@ -29,16 +31,41 @@ class LSTMConfig(BaseModel):
     units_1: int = 64
     units_2: int = 32
     dropout: float = 0.2
+    recurrent_dropout: float = 0.0
     learning_rate: float = 1e-3
     epochs: int = 20
     batch_size: int = 32
     patience: int = 5
+    val_split: float = 0.1
+    threshold_k: float = 2.5
+
+
+class LSTMForecasterConfig(BaseModel):
+    units: int = 32
+    dropout: float = 0.2
+    recurrent_dropout: float = 0.0
+    learning_rate: float = 1e-3
+    epochs: int = 20
+    batch_size: int = 32
+    patience: int = 5
+    val_split: float = 0.1
     threshold_k: float = 2.5
 
 
 class ModelConfig(BaseModel):
     isolation_forest: IFConfig = Field(default_factory=IFConfig)
     lstm_autoencoder: LSTMConfig = Field(default_factory=LSTMConfig)
+    lstm_forecaster: LSTMForecasterConfig = Field(default_factory=LSTMForecasterConfig)
+
+
+class AblationConfig(BaseModel):
+    units_2: list[int] = Field(default_factory=lambda: [16, 32, 64])
+    window_size: list[int] = Field(default_factory=lambda: [10, 20])
+
+
+class EvaluationConfig(BaseModel):
+    seeds: list[int] = Field(default_factory=lambda: [42, 43, 44, 45, 46])
+    ablation: AblationConfig = Field(default_factory=AblationConfig)
 
 
 class ThresholdTuningConfig(BaseModel):
@@ -66,6 +93,7 @@ class Settings(BaseModel):
     data: DataConfig = Field(default_factory=DataConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     api: APIConfig = Field(default_factory=APIConfig)
 
 
