@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score, roc_curve
 
 from ..config.settings import Settings
 from ..data.dataset import split_series
@@ -24,6 +24,7 @@ from ..preprocessing.windowing import (
     make_windows,
     select_normal_windows,
 )
+from ..tracking.loggers import NoOpLogger
 
 FEATURES = ["cpu", "memory", "latency"]
 IF_NAME = "isolation_forest"
@@ -53,7 +54,10 @@ class _RunArtifacts:
 
 
 def run_training(
-    settings: Settings, out_dir: Path, sweep: bool = False
+    settings: Settings,
+    out_dir: Path,
+    sweep: bool = False,
+    logger=None,
 ) -> TrainingResult:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -134,6 +138,8 @@ def run_training(
 
     _write_json(out_dir / "metadata.json", metadata)
     _write_json(out_dir / "metrics.json", metrics)
+
+    _log_run(logger or NoOpLogger(), settings, metrics, ref, out_dir)
 
     return TrainingResult(metrics=metrics, bundle_dir=out_dir)
 
@@ -381,6 +387,9 @@ def _generate_valid_splits(settings: Settings, seed: int):
     )
 
 
+_ROC_POINTS = 50
+
+
 def _metrics_for(scores: np.ndarray, y: np.ndarray, threshold: float) -> dict[str, Any]:
     preds = (scores > threshold).astype(int)
     return {
@@ -389,6 +398,18 @@ def _metrics_for(scores: np.ndarray, y: np.ndarray, threshold: float) -> dict[st
         "precision": float(precision_score(y, preds, zero_division=0)),
         "recall": float(recall_score(y, preds, zero_division=0)),
         "roc_auc": float(roc_auc_score(y, scores)) if y.max() > 0 else None,
+        "roc_curve": _roc_curve_data(scores, y),
+    }
+
+
+def _roc_curve_data(scores: np.ndarray, y: np.ndarray) -> dict | None:
+    if y.max() == 0:
+        return None
+    fpr, tpr, _ = roc_curve(y, scores)
+    idx = np.linspace(0, len(fpr) - 1, min(_ROC_POINTS, len(fpr))).astype(int)
+    return {
+        "fpr": [round(float(fpr[i]), 4) for i in idx],
+        "tpr": [round(float(tpr[i]), 4) for i in idx],
     }
 
 
@@ -424,6 +445,63 @@ def _tune_threshold(
 
     best = max(sweep, key=lambda r: r["f1"])
     return best["threshold"], sweep
+
+
+def _log_run(logger, settings: Settings, metrics: dict, ref: _RunArtifacts, out_dir: Path) -> None:
+    with logger:
+        logger.log_params(_flatten_params(settings))
+        logger.log_metrics(_flatten_metrics(metrics))
+        for fname in ("metrics.json", "threshold.json", "metadata.json"):
+            logger.log_artifact(out_dir / fname)
+        if ref.if_detector._model is not None:
+            logger.log_model(ref.if_detector._model, IF_NAME)
+
+
+def _flatten_params(settings: Settings) -> dict[str, Any]:
+    d = settings.data
+    mi = settings.model.isolation_forest
+    ml = settings.model.lstm_autoencoder
+    mf = settings.model.lstm_forecaster
+    fu = settings.detection.fusion
+    return {
+        "seed": settings.seed,
+        "window_size": d.window_size,
+        "n_points": d.n_points,
+        "if_n_estimators": mi.n_estimators,
+        "if_contamination": mi.contamination,
+        "lstm_units_1": ml.units_1,
+        "lstm_units_2": ml.units_2,
+        "lstm_dropout": ml.dropout,
+        "lstm_epochs": ml.epochs,
+        "lstm_patience": ml.patience,
+        "lstm_threshold_k": ml.threshold_k,
+        "fcst_units": mf.units,
+        "fcst_dropout": mf.dropout,
+        "fcst_epochs": mf.epochs,
+        "fcst_patience": mf.patience,
+        "fcst_threshold_k": mf.threshold_k,
+        "weight_if": fu.weight_if,
+        "weight_lstm": fu.weight_lstm,
+    }
+
+
+_DETECTOR_PREFIX = {
+    IF_NAME: "if",
+    LSTM_NAME: "lstm_ae",
+    FORECAST_NAME: "lstm_fcst",
+    "fused": "fused",
+}
+
+
+def _flatten_metrics(metrics: dict) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for det, prefix in _DETECTOR_PREFIX.items():
+        m = metrics.get(det, {})
+        for k in ("f1", "precision", "recall", "roc_auc"):
+            v = m.get(k)
+            if isinstance(v, float):
+                out[f"{prefix}_{k}"] = v
+    return out
 
 
 def _write_json(path: Path, obj: Any) -> None:

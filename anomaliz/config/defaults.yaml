@@ -58,3 +58,7 @@ agent:
   openai_model: "gpt-4o-mini"
   ollama_model: "llama3.2"
   ollama_base_url: "http://localhost:11434"
+
+tracking:
+  experiment_name: "anomaliz"
+  tracking_uri: null

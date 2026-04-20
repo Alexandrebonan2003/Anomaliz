@@ -95,6 +95,11 @@ class AgentConfig(BaseModel):
     ollama_base_url: str = "http://localhost:11434"
 
 
+class TrackingConfig(BaseModel):
+    experiment_name: str = "anomaliz"
+    tracking_uri: str | None = None
+
+
 class Settings(BaseModel):
     seed: int = 42
     data: DataConfig = Field(default_factory=DataConfig)
@@ -103,6 +108,7 @@ class Settings(BaseModel):
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     api: APIConfig = Field(default_factory=APIConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
+    tracking: TrackingConfig = Field(default_factory=TrackingConfig)
 
 
 def load_settings(config_path: Path | None = None) -> Settings:

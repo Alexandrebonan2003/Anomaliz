@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -16,3 +16,18 @@ class Detector(Protocol):
 
     @classmethod
     def load(cls, path: Path) -> "Detector": ...
+
+
+@runtime_checkable
+class ExperimentLogger(Protocol):
+    def log_params(self, params: dict[str, Any]) -> None: ...
+
+    def log_metrics(self, metrics: dict[str, float]) -> None: ...
+
+    def log_artifact(self, local_path: Path) -> None: ...
+
+    def log_model(self, model: object, artifact_path: str) -> None: ...
+
+    def __enter__(self) -> "ExperimentLogger": ...
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None: ...
