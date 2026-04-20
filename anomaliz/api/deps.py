@@ -12,6 +12,8 @@ from ..models.isolation_forest import IFDetector
 from ..models.lstm_autoencoder import LSTMAutoencoder
 from ..preprocessing.normalizer import MinMaxNormalizer
 
+# CompiledGraph is imported at call-time to avoid mandatory langgraph import at module load
+
 
 @dataclass
 class Bundle:
@@ -58,3 +60,8 @@ def get_bundle(request: Request) -> Bundle:
     if bundle is None:
         raise HTTPException(status_code=503, detail="Bundle not loaded")
     return bundle
+
+
+def get_agent_graph(request: Request):
+    """Return the compiled LangGraph agent, or None when agent is disabled."""
+    return getattr(request.app.state, "agent_graph", None)

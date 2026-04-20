@@ -52,3 +52,9 @@ detection:
 api:
   host: "0.0.0.0"
   port: 8000
+
+agent:
+  backend: "disabled"
+  openai_model: "gpt-4o-mini"
+  ollama_model: "llama3.2"
+  ollama_base_url: "http://localhost:11434"

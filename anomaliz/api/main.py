@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -7,8 +8,13 @@ from pathlib import Path
 import numpy as np
 from fastapi import Depends, FastAPI, HTTPException
 
+logger = logging.getLogger(__name__)
+
+from ..agent.graph import build_graph, invoke_agent
+from ..agent.llm import build_backend
+from ..config.settings import load_settings
 from ..detection.scorer import decide, fuse
-from .deps import Bundle, get_bundle, load_bundle
+from .deps import Bundle, get_agent_graph, get_bundle, load_bundle
 from .schemas import AnalyzeRequest, AnalyzeResponse
 
 
@@ -16,6 +22,11 @@ from .schemas import AnalyzeRequest, AnalyzeResponse
 async def lifespan(app: FastAPI):
     bundle_dir = os.environ.get("ANOMALIZ_ARTIFACT_DIR")
     app.state.bundle = load_bundle(Path(bundle_dir)) if bundle_dir else None
+
+    settings = load_settings()
+    backend = build_backend(settings.agent)
+    app.state.agent_graph = build_graph(backend) if backend is not None else None
+
     yield
 
 
@@ -34,7 +45,9 @@ def metrics(bundle: Bundle = Depends(get_bundle)) -> dict:
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(
-    req: AnalyzeRequest, bundle: Bundle = Depends(get_bundle)
+    req: AnalyzeRequest,
+    bundle: Bundle = Depends(get_bundle),
+    agent_graph=Depends(get_agent_graph),
 ) -> AnalyzeResponse:
     lengths = {len(req.cpu), len(req.memory), len(req.latency)}
     if len(lengths) != 1:
@@ -65,12 +78,37 @@ def analyze(
         "isolation_forest" if if_contribution >= lstm_contribution else "lstm_autoencoder"
     )
 
+    is_anomaly = decide(fused_score, bundle.threshold)
+    analysis = severity = recommendation = None
+
+    if is_anomaly and agent_graph is not None:
+        cpu_mean = float(np.mean(req.cpu))
+        memory_mean = float(np.mean(req.memory))
+        latency_mean = float(np.mean(req.latency))
+        try:
+            analysis, severity, recommendation = invoke_agent(
+                agent_graph,
+                cpu=cpu_mean * 100,
+                memory=memory_mean * 100,
+                latency=latency_mean,
+                score=fused_score,
+                threshold=bundle.threshold,
+                model_used=model_used,
+            )
+        except Exception:
+            logger.warning(
+                "Agent invocation failed (score=%.3f, model=%s); degrading gracefully",
+                fused_score,
+                model_used,
+                exc_info=True,
+            )
+
     return AnalyzeResponse(
-        anomaly=decide(fused_score, bundle.threshold),
+        anomaly=is_anomaly,
         score=fused_score,
         threshold=bundle.threshold,
         model_used=model_used,
-        analysis=None,
-        severity=None,
-        recommendation=None,
+        analysis=analysis,
+        severity=severity,
+        recommendation=recommendation,
     )

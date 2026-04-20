@@ -88,6 +88,13 @@ class APIConfig(BaseModel):
     port: int = 8000
 
 
+class AgentConfig(BaseModel):
+    backend: str = "disabled"  # "openai" | "ollama" | "disabled"
+    openai_model: str = "gpt-4o-mini"
+    ollama_model: str = "llama3.2"
+    ollama_base_url: str = "http://localhost:11434"
+
+
 class Settings(BaseModel):
     seed: int = 42
     data: DataConfig = Field(default_factory=DataConfig)
@@ -95,6 +102,7 @@ class Settings(BaseModel):
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     api: APIConfig = Field(default_factory=APIConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
 
 
 def load_settings(config_path: Path | None = None) -> Settings:
