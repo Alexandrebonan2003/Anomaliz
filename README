@@ -1,53 +1,32 @@
-# Anomaliz — Time Series Anomaly Detection System
+# Anomaliz — Time Series Anomaly Detection: Research Notes
 
 ## Overview
 
-Anomaliz is an end-to-end anomaly detection project for multivariate time series, designed with a strong focus on:
+Anomaliz is an end-to-end anomaly detection system for multivariate time-series system metrics (CPU, memory, latency). The project is structured around five phases, progressing from a classical ML baseline to a production-ready service with deep learning, LLM-assisted interpretation, experiment tracking, and containerised deployment.
 
-- data quality
-- evaluation methodology
-- threshold calibration
-- progression from a classical ML baseline to Deep Learning sequence models
+The research focus is on:
 
-The project started with an **Isolation Forest** baseline on sliding windows, then evolved toward two sequence-based Deep Learning approaches:
+- rigorous evaluation methodology and threshold calibration
+- comparison of anomaly detection formulations (isolation, reconstruction, forecasting)
+- realistic synthetic benchmark design
+- multi-seed statistical validation
 
-- an **LSTM Autoencoder** for reconstruction-based anomaly detection
-- an **LSTM Forecaster** for forecasting-based anomaly detection
-
-The main objective is not only to detect anomalies, but also to understand how data design, labeling strategy, threshold tuning, and model formulation affect real anomaly detection performance.
+For installation, API usage, Docker, and configuration, see [`README.md`](README.md).
 
 ---
 
-## Current Status
+## System Components
 
-### Phase 1 — ML baseline
-Implemented and validated with:
-- synthetic multivariate time series generation
-- anomaly injection
-- sliding window transformation
-- last-point window labeling
-- Isolation Forest training
-- validation-based threshold tuning
-- final test evaluation
-- artifact generation
-
-### Phase 2 — Deep Learning extension
-Implemented and validated with:
-- LSTM Autoencoder trained on normal-only windows
-- anomaly scoring from reconstruction error
-- validation-based threshold tuning
-- final test evaluation
-- score fusion with the Isolation Forest baseline
-
-### Phase 2.5 — DL hardening and model comparison
-Implemented and validated with:
-- strict normal-only DL training
-- proper early stopping
-- dropout and model-capacity tuning
-- multi-seed evaluation
-- realistic anomaly-rate constraints after windowing
-- comparison between reconstruction-based and forecasting-based anomaly detection
-- a new **LSTM Forecaster** baseline
+| Phase | Component | Description |
+|---|---|---|
+| 1 | Isolation Forest | Classical ML baseline on flattened sliding windows |
+| 2 | LSTM Autoencoder | Reconstruction-based anomaly scoring (normal-only training) |
+| 2.5 | LSTM Forecaster | Forecasting-based anomaly scoring; best single model |
+| 2 | Score fusion | Weighted combination of IF and LSTM-AE scores |
+| 3 | LangGraph agent | Structured LLM interpretation: analysis, severity, recommendation |
+| 4 | MLflow tracking | Parameter, metric, and artifact logging per training run |
+| 4 | Evaluation dashboard | ROC curves, metric comparison, seed-stability plots |
+| 5 | FastAPI + Docker | REST serving layer with containerised deployment |
 
 ---
 
@@ -70,55 +49,28 @@ Threshold tuning on validation
    ↓
 Final evaluation on test
    ↓
-Artifacts (metrics, thresholds, metadata)
+Artifact bundle (models + thresholds + metrics + metadata)
 ```
 
-### Phase 1 — Isolation Forest baseline
+### Isolation Forest (Phase 1)
 
 ```text
-Windows
-   ↓
-Flattening
-   ↓
-Isolation Forest
-   ↓
-Anomaly scores
-   ↓
-Threshold tuning
-   ↓
-Final evaluation
+Windows → flattening → IsolationForest → anomaly scores
+→ threshold tuning → final evaluation
 ```
 
-### Phase 2 — Reconstruction-based DL
+### Reconstruction-based DL (Phase 2)
 
 ```text
-Windows
-   ↓
-Normal-only training windows
-   ↓
-LSTM Autoencoder
-   ↓
-Reconstruction error
-   ↓
-Threshold tuning
-   ↓
-Final evaluation
+Windows → normal-only subset → LSTM Autoencoder
+→ reconstruction error → threshold tuning → final evaluation
 ```
 
-### Phase 2.5 — Forecasting-based DL
+### Forecasting-based DL (Phase 2.5)
 
 ```text
-Windows
-   ↓
-Normal-only training windows
-   ↓
-LSTM Forecaster
-   ↓
-Forecast residuals
-   ↓
-Threshold tuning
-   ↓
-Final evaluation
+Windows → normal-only subset → LSTM Forecaster
+→ forecast residuals → threshold tuning → final evaluation
 ```
 
 ---
@@ -127,15 +79,9 @@ Final evaluation
 
 ### 1. Window labeling strategy matters
 
-The initial setup labeled a window as anomalous if **any point inside the window** was anomalous.
+The initial setup labeled a window as anomalous if **any point inside the window** was anomalous. This created an unrealistic anomaly rate and artificially inflated results. After switching to a **last-point labeling strategy** (`label = last element of the window`), the benchmark became more realistic and the task more meaningful.
 
-This created an unrealistic anomaly rate and artificially inflated results.
-
-After switching to a **last-point labeling strategy** (`label = last element of the window`), the benchmark became much more realistic and the task more meaningful.
-
-This confirmed that dataset construction has a major impact on anomaly detection results.
-
----
+This confirmed that dataset construction has a major impact on measured anomaly detection performance.
 
 ### 2. Threshold calibration is a core part of anomaly detection
 
@@ -144,24 +90,19 @@ The pipeline enforces a strict separation between:
 - threshold tuning on validation
 - final evaluation on test
 
-This avoids mixing ranking quality with decision calibration and makes the reported results more defensible.
-
-It also showed that anomaly detection performance is often constrained more by **data design and threshold choice** than by the model alone.
-
----
+This avoids conflating ranking quality with decision calibration and makes the reported results more defensible. It also showed that anomaly detection performance is often constrained more by **data design and threshold choice** than by the model itself.
 
 ### 3. Realistic anomaly rates are critical
 
-A major part of the project was making the synthetic benchmark both:
-- **realistic** enough to resemble rare-event detection
-- **stable** enough to support multi-seed evaluation
-
-The final setup keeps the anomaly rate low after windowing while ensuring valid validation and test splits across seeds.
+A major part of the project was making the synthetic benchmark both realistic enough to resemble rare-event detection and stable enough to support multi-seed evaluation. The final setup keeps the anomaly rate low after windowing while ensuring valid splits across seeds.
 
 Typical class balance in the final benchmark:
-- train anomaly rate: **~10.1%**
-- validation anomaly rate: **~9.7%**
-- test anomaly rate: **~6.8%**
+
+| Split | Anomaly rate |
+|---|---:|
+| Train | ~10.1% |
+| Validation | ~9.7% |
+| Test | ~6.8% |
 
 This preserves an imbalanced anomaly-detection setting while keeping evaluation statistically meaningful.
 
@@ -169,9 +110,9 @@ This preserves an imbalanced anomaly-detection setting while keeping evaluation 
 
 ## Experimental Results
 
-## Phase 2 — Initial DL transition
+### Phase 2 — Initial DL transition
 
-On the first realistic benchmark, the **LSTM Autoencoder** appeared to improve over the Isolation Forest baseline:
+On the first realistic benchmark, the LSTM Autoencoder appeared to improve over the Isolation Forest baseline:
 
 | Model | Precision | Recall | F1-score | ROC-AUC |
 |---|---:|---:|---:|---:|
@@ -179,133 +120,62 @@ On the first realistic benchmark, the **LSTM Autoencoder** appeared to improve o
 | LSTM Autoencoder | ~0.50 | ~0.90 | ~0.64 | ~0.93 |
 | Fused | ~0.48 | ~0.90 | ~0.63 | ~0.93–0.94 |
 
-This validated the move from a classical ML baseline to sequence modeling, but only on a limited experimental setting.
+This validated the move toward sequence modeling, but only on a single-seed setting.
 
----
+### Phase 2.5 — Multi-seed robust evaluation
 
-## Phase 2.5 — Multi-seed robust evaluation
-
-Final aggregated results across **5 seeds** on the stabilized realistic benchmark:
+Final aggregated results across **5 seeds** on the stabilised realistic benchmark:
 
 | Model | F1 mean ± std | Precision mean ± std | Recall mean ± std | ROC-AUC mean ± std | Verdict |
 |---|---:|---:|---:|---:|---|
 | Isolation Forest | 0.642 ± 0.067 | 0.596 ± 0.096 | 0.702 ± 0.037 | 0.904 ± 0.024 | baseline |
 | LSTM Autoencoder | 0.655 ± 0.048 | 0.590 ± 0.076 | 0.744 ± 0.025 | 0.908 ± 0.027 | no improvement |
 | Fused (IF + AE) | 0.663 ± 0.049 | 0.597 ± 0.077 | 0.754 ± 0.026 | 0.910 ± 0.027 | no improvement |
-| LSTM Forecaster | **0.797 ± 0.056** | **0.897 ± 0.113** | **0.723 ± 0.038** | **0.936 ± 0.007** | **beats baseline** |
+| **LSTM Forecaster** | **0.797 ± 0.056** | **0.897 ± 0.113** | **0.723 ± 0.038** | **0.936 ± 0.007** | **beats baseline** |
 
 ### Interpretation
 
-The final conclusion of the DL hardening phase is clear:
+- The **LSTM Autoencoder** does not robustly outperform the Isolation Forest baseline. The single-seed gain seen in Phase 2 does not hold under multi-seed evaluation.
+- Score fusion over IF + AE provides no decisive improvement.
+- The **LSTM Forecaster** clearly outperforms both the ML baseline and the reconstruction-based DL approach.
 
-- the **LSTM Autoencoder** does not robustly outperform the Isolation Forest baseline
-- simple score fusion does not provide a decisive gain either
-- the **LSTM Forecaster** clearly outperforms both the ML baseline and the reconstruction-based DL approach
-
-This suggests that, on this benchmark, **forecasting is a more effective anomaly detection formulation than reconstruction**.
+This suggests that, on this benchmark, **forecasting is a more effective anomaly detection formulation than reconstruction**. The forecaster is therefore the primary model used at inference time.
 
 ---
 
 ## Ablation Insights
 
-Targeted ablations were used to evaluate:
-- latent/model capacity (`units_2`)
-- window size
+Ablations were run over latent/model capacity (`units_2`) and window size.
 
-Main observations:
-- changing the Autoencoder capacity did **not** materially change the global conclusion
-- the **Forecaster remained the strongest DL model** across tested settings
-- with larger windows, classical and reconstruction-based approaches degraded more sharply, while the Forecaster remained strong
+- Changing Autoencoder capacity did not materially alter the global conclusion.
+- The Forecaster remained the strongest DL model across all tested settings.
+- With larger windows, classical and reconstruction-based approaches degraded more sharply, while the Forecaster remained robust.
 
-This indicates that the forecasting-based approach makes better use of temporal context on this synthetic benchmark.
+This indicates that the forecasting formulation makes better use of temporal context on this synthetic benchmark.
 
 ---
 
 ## Key Takeaways
 
-- Dataset construction strongly impacts anomaly detection performance
-- Window labeling strategy can artificially inflate results
-- Threshold calibration is essential for usable anomaly detection
-- High ROC-AUC does not guarantee strong thresholded classification
-- A Deep Learning model does not automatically outperform a strong classical baseline
-- On this benchmark, **forecasting-based DL outperformed reconstruction-based DL**
-- Robust multi-seed evaluation is necessary to validate performance claims
+- Dataset construction strongly impacts anomaly detection performance.
+- Window labeling strategy can artificially inflate results.
+- Threshold calibration is essential — high ROC-AUC does not guarantee strong thresholded classification.
+- A deep learning model does not automatically outperform a well-tuned classical baseline.
+- On this benchmark, **forecasting-based DL outperforms reconstruction-based DL**.
+- Robust multi-seed evaluation is necessary to validate performance claims.
 
 ---
 
 ## Technical Highlights
 
-This project demonstrates:
-- end-to-end anomaly detection pipeline design
-- synthetic time-series benchmark engineering
-- ML baseline implementation with Isolation Forest
-- Deep Learning sequence modeling with Keras / TensorFlow
-- reconstruction-based vs forecasting-based anomaly detection comparison
-- threshold optimization on validation
-- multi-seed evaluation and metric aggregation
-- reproducible artifact generation for training/serving separation
-- API exposure for model serving
-
----
-
-## How to Run
-
-### Train the default pipeline
-
-```bash
-python -m anomaliz.training.cli --out artifacts/dev
-```
-
-### Run the sweep
-
-```bash
-python -m anomaliz.training.cli --out artifacts/sweep --sweep
-```
-
-### Run tests
-
-```bash
-pytest
-```
-
-### Start the API
-
-```bash
-ANOMALIZ_ARTIFACT_DIR=artifacts/dev uvicorn anomaliz.api.main:app
-```
-
-### Main endpoints
-
-- `GET /health`
-- `GET /metrics`
-- `POST /analyze`
-
----
-
-## Project Structure
-
-```text
-anomaliz/
-├── config/
-├── core/
-├── data/
-├── preprocessing/
-├── models/
-├── detection/
-├── training/
-├── api/
-├── artifacts/
-└── tests/
-```
-
----
-
-## Next Step
-
-The next phase can extend the system toward:
-- LLM-assisted anomaly interpretation
-- experiment tracking
-- richer visualization and deployment tooling
-
-At this stage, the project already provides a solid ML/DL anomaly detection benchmark with a clear experimental conclusion:
-**forecasting-based sequence modeling is the most effective approach implemented so far.**
+- End-to-end anomaly detection pipeline with training/serving separation
+- Synthetic time-series benchmark engineering with realistic anomaly injection
+- Isolation Forest, LSTM Autoencoder, and LSTM Forecaster implementations
+- Reconstruction-based vs forecasting-based anomaly detection comparison
+- Validation-based threshold optimisation
+- Multi-seed evaluation with metric aggregation
+- MLflow experiment tracking (params, metrics, artifacts)
+- LangGraph agent for structured LLM-assisted anomaly interpretation
+- Performance dashboard: ROC curves, metric comparison, seed-stability plots
+- Reproducible artifact bundles for training/serving separation
+- REST API via FastAPI; containerised deployment via Docker
