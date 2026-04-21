@@ -1,0 +1,13 @@
+.claude
+.venv
+.git
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+artifacts/
+mlruns/
+mlruns.db
+.pytest_cache
+reports/
+*.png
