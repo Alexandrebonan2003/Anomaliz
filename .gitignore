@@ -19,3 +19,4 @@ artifacts/
 .nab_cache/
 
 .DS_Store
+mlruns.db
