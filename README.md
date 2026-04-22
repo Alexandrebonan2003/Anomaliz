@@ -3,7 +3,7 @@
 End-to-end anomaly detection service for multivariate time-series system metrics.
 Combines classical ML, deep learning, a LangGraph explainability agent, MLflow experiment tracking, and a FastAPI serving layer.
 
-For experimental methodology, model comparison results, and research findings, see [`README`](README).
+For experimental methodology, model comparison results, and research findings, see [`README_research.md`](README_research.md).
 
 ---
 
@@ -16,7 +16,7 @@ For experimental methodology, model comparison results, and research findings, s
 │  Data          Synthetic series → anomaly injection             │
 │  Preprocessing Min-max normalisation → sliding windows          │
 │  Models        IsolationForest  ·  LSTM Autoencoder             │
-│                LSTM Forecaster  (best single model)             │
+│                LSTM Forecaster  (best synthetic single model)   │
 │  Scoring       IF + LSTM-AE weighted fusion → threshold         │
 │  Tracking      MLflow (params · metrics · artifacts)            │
 │  Bundle        artifacts/<run>/  ← normalizer + models +        │
@@ -26,7 +26,7 @@ For experimental methodology, model comparison results, and research findings, s
 ┌──────────────────────────────▼──────────────────────────────────┐
 │  FastAPI  POST /analyze                                          │
 │                                                                  │
-│  Detection     IsolationForest + LSTM Autoencoder fusion         │
+│  Detection     score + threshold + selected detector             │
 │  Agent         LangGraph  →  analysis · severity · recommend    │
 │  (optional)    OpenAI gpt-4o-mini  |  Ollama llama3.2           │
 └─────────────────────────────────────────────────────────────────┘
@@ -37,17 +37,36 @@ For experimental methodology, model comparison results, and research findings, s
 ## Quick start
 
 ```bash
-# 1. Install
 make install
-
-# 2. Train (writes bundle to artifacts/dev/)
 make train
-
-# 3. Serve
 make serve
 ```
 
-The API is now live at `http://localhost:8000`.
+The API is live at `http://localhost:8000`.
+
+---
+
+## End-to-end workflow
+
+Typical local workflow:
+
+```bash
+make install
+make train
+make serve
+```
+
+Optional extensions:
+
+```bash
+make train-mlflow
+make mlflow-ui
+make dashboard
+make eval-nab
+make docker-up
+```
+
+This covers training, external validation, serving, visualisation, and deployment.
 
 ---
 
@@ -68,15 +87,15 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ### Default run
 
 ```bash
-make train                        # → artifacts/dev/
-make train BUNDLE=artifacts/v1    # custom output path
+make train
+make train BUNDLE=artifacts/v1
 ```
 
 ### With MLflow tracking
 
 ```bash
-make train-mlflow                 # logs to mlruns.db (SQLite)
-make mlflow-ui                    # open http://localhost:5000
+make train-mlflow
+make mlflow-ui
 ```
 
 Or specify a remote tracking server:
@@ -92,7 +111,7 @@ Or specify a remote tracking server:
 ### With ablation sweep
 
 ```bash
-make train-sweep    # runs capacity + window-size ablations
+make train-sweep
 ```
 
 ### Bundle contents
@@ -105,11 +124,9 @@ artifacts/dev/
 ├── lstm_autoencoder/   model.keras + params.json
 ├── lstm_forecaster/    model.keras + params.json
 ├── normalizer.json
-├── threshold.json      per-detector + fusion thresholds
-├── metadata.json       resolved config + git SHA + timestamp
-└── metrics.json        F1 · precision · recall · ROC-AUC
-                        ROC curve points · multi-seed aggregate
-                        comparison_summary verdict
+├── threshold.json
+├── metadata.json
+└── metrics.json
 ```
 
 ---
@@ -119,8 +136,8 @@ artifacts/dev/
 ### Start
 
 ```bash
-make serve                        # uses artifacts/dev/
-make serve BUNDLE=artifacts/v1    # custom bundle
+make serve
+make serve BUNDLE=artifacts/v1
 ```
 
 ### Endpoints
@@ -129,20 +146,15 @@ make serve BUNDLE=artifacts/v1    # custom bundle
 
 ```bash
 curl http://localhost:8000/health
-# {"status":"ok"}
 ```
 
 #### `GET /metrics`
-
-Returns `metrics.json` from the loaded bundle.
 
 ```bash
 curl http://localhost:8000/metrics | python3 -m json.tool
 ```
 
 #### `POST /analyze`
-
-Send a window of 10 normalised values per feature:
 
 ```bash
 curl -s -X POST http://localhost:8000/analyze \
@@ -154,49 +166,19 @@ curl -s -X POST http://localhost:8000/analyze \
   }' | python3 -m json.tool
 ```
 
-Example response (normal window, agent disabled):
-
-```json
-{
-  "anomaly": false,
-  "score": 0.112,
-  "threshold": 0.130,
-  "model_used": "isolation_forest",
-  "analysis": null,
-  "severity": null,
-  "recommendation": null
-}
-```
-
-Example response (anomalous window, agent enabled):
-
-```json
-{
-  "anomaly": true,
-  "score": 0.871,
-  "threshold": 0.130,
-  "model_used": "lstm_autoencoder",
-  "analysis": "A CPU spike is detected alongside elevated latency, suggesting a resource-contended process.",
-  "severity": "critical",
-  "recommendation": "Identify the runaway process via top/htop and consider horizontal scaling."
-}
-```
-
 `analysis`, `severity`, and `recommendation` are `null` when the agent is disabled or when no anomaly is detected.
 
 ---
 
 ## Explainability agent
 
-The LangGraph agent enriches anomaly responses with structured interpretation. It is **disabled by default** — detection never depends on it.
+The LangGraph agent enriches anomaly responses with structured interpretation. It is **disabled by default**.
 
-### Enable with Ollama (local)
+### Enable with Ollama
 
 ```bash
-# Pull the model once
 ollama pull llama3.2
-
-make serve-with-agent   # sets ANOMALIZ__AGENT__BACKEND=ollama
+make serve-with-agent
 ```
 
 ### Enable with OpenAI
@@ -208,13 +190,7 @@ OPENAI_API_KEY=sk-... \
 .venv/bin/uvicorn anomaliz.api.main:app
 ```
 
-### Agent pipeline
-
-```
-analyze_node  →  severity_node  →  recommend_node
-```
-
-If the LLM call fails for any reason (network error, timeout, missing key), the API returns `200` with `null` agent fields — detection is never interrupted.
+If the LLM call fails for any reason, the API returns `200` with `null` agent fields — detection is never interrupted.
 
 ---
 
@@ -223,9 +199,9 @@ If the LLM call fails for any reason (network error, timeout, missing key), the 
 Generate all performance plots from any trained bundle:
 
 ```bash
-make dashboard                        # → reports/
-make dashboard BUNDLE=artifacts/v1    # custom bundle
-make dashboard REPORTS=my_reports     # custom output directory
+make dashboard
+make dashboard BUNDLE=artifacts/v1
+make dashboard REPORTS=my_reports
 ```
 
 | File | Contents |
@@ -234,6 +210,29 @@ make dashboard REPORTS=my_reports     # custom output directory
 | `metrics_comparison.png` | Grouped bar chart: F1 / precision / recall |
 | `seed_stability.png` | F1 mean ± std across 5 seeds |
 | `comparison_summary.png` | Verdict table vs Isolation Forest baseline |
+
+---
+
+## External evaluation (NAB)
+
+Run external validation on real-world time series:
+
+```bash
+make eval-nab
+```
+
+Options:
+
+```bash
+make eval-nab BUNDLE=artifacts/v1
+python -m anomaliz.data.nab --bundle artifacts/dev --series cpu_asg
+```
+
+This step:
+- downloads and caches NAB datasets locally (`.nab_cache/`)
+- adapts univariate series to the project’s multivariate format
+- reuses normalisation, windowing, and threshold tuning
+- reports metrics comparable to the synthetic benchmark
 
 ---
 
@@ -248,7 +247,7 @@ make docker-up
 - API: `http://localhost:8000`
 - MLflow UI: `http://localhost:5000`
 
-Artifacts are mounted from `./artifacts` (read-only). Train a bundle locally first, then set `ANOMALIZ_ARTIFACT_DIR` in `.env` (copy `.env.example`).
+Artifacts are mounted from `./artifacts` (read-only). Train a bundle locally first, then set `ANOMALIZ_ARTIFACT_DIR` in `.env`.
 
 ### Also start Ollama
 
@@ -258,11 +257,11 @@ make docker-up-llm
 
 Ollama is behind the `llm` compose profile so it is not pulled by default.
 
+This setup reproduces the full system (API, tracking, and optional LLM agent) in a portable and reproducible environment.
+
 ---
 
 ## Configuration
-
-All hyperparameters live in `anomaliz/config/defaults.yaml` and can be overridden with env vars (`ANOMALIZ__<SECTION>__<KEY>`) or a YAML file (`--config`).
 
 | Env var | Default | Purpose |
 |---|---|---|
@@ -282,8 +281,8 @@ All hyperparameters live in `anomaliz/config/defaults.yaml` and can be overridde
 ## Tests
 
 ```bash
-make test           # full suite (~60 s, includes training smoke test)
-make test-fast      # skips training smoke test
+make test
+make test-fast
 ```
 
 ---
@@ -292,26 +291,19 @@ make test-fast      # skips training smoke test
 
 ```
 anomaliz/
-├── agent/          LangGraph explainability agent
-│   ├── graph.py    compiled StateGraph (analyze → severity → recommend)
-│   ├── llm.py      LLMBackend protocol + OpenAI / Ollama / Mock impls
-│   ├── nodes.py    three prompt-driven node functions
-│   └── state.py    AnomalyState TypedDict
-├── api/            FastAPI application
-│   ├── deps.py     Bundle + agent_graph dependency providers
-│   ├── main.py     endpoints: /health /metrics /analyze
-│   └── schemas.py  Pydantic request / response models
-├── config/         Settings (pydantic-settings) + defaults.yaml
-├── core/           Detector + ExperimentLogger protocols
-├── data/           Synthetic series generator + train/val/test split
-├── detection/      fuse() + decide() scoring utilities
-├── models/         IFDetector · LSTMAutoencoder · LSTMForecaster
-├── preprocessing/  MinMaxNormalizer + sliding window builder
-├── tracking/       NoOpLogger + MLflowLogger + build_logger()
-├── training/       pipeline.py (end-to-end run) + CLI
-└── visualization/  dashboard.py (ROC curves · metrics · seed stability)
-artifacts/          gitignored — output of training runs
-tests/              pytest suite mirroring package layout
+├── agent/
+├── api/
+├── config/
+├── core/
+├── data/
+├── detection/
+├── models/
+├── preprocessing/
+├── tracking/
+├── training/
+├── visualization/
+artifacts/
+tests/
 Dockerfile
 docker-compose.yml
 Makefile
