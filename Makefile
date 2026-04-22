@@ -69,6 +69,12 @@ docker-up-llm:  ## Start API + MLflow UI + Ollama
 docker-down:  ## Stop and remove all containers
 	docker compose down
 
+# ── evaluation ────────────────────────────────────────────────────────────────
+
+.PHONY: eval-nab
+eval-nab:  ## Evaluate trained models on NAB real-world data (downloads ~100 KB)
+	$(PYTHON) -m anomaliz.data.nab --bundle $(BUNDLE) --cache-dir .nab_cache
+
 # ── tests ─────────────────────────────────────────────────────────────────────
 
 .PHONY: test

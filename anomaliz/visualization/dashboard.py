@@ -221,6 +221,10 @@ def generate_report(bundle_dir: Path, out_dir: Path | None = None, show: bool = 
 
     written: list[Path] = []
 
+    if out_dir is not None:
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
     plots = [
         ("roc_curves.png", plot_roc_curves),
         ("metrics_comparison.png", plot_metrics_comparison),
@@ -231,8 +235,6 @@ def generate_report(bundle_dir: Path, out_dir: Path | None = None, show: bool = 
     for fname, plot_fn in plots:
         fig = plot_fn(metrics)
         if out_dir is not None:
-            out_dir = Path(out_dir)
-            out_dir.mkdir(parents=True, exist_ok=True)
             dest = out_dir / fname
             fig.savefig(dest, dpi=120, bbox_inches="tight")
             written.append(dest)

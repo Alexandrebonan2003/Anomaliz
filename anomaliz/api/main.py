@@ -8,14 +8,14 @@ from pathlib import Path
 import numpy as np
 from fastapi import Depends, FastAPI, HTTPException
 
-logger = logging.getLogger(__name__)
-
 from ..agent.graph import build_graph, invoke_agent
 from ..agent.llm import build_backend
 from ..config.settings import load_settings
 from ..detection.scorer import decide, fuse
 from .deps import Bundle, get_agent_graph, get_bundle, load_bundle
 from .schemas import AnalyzeRequest, AnalyzeResponse
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager

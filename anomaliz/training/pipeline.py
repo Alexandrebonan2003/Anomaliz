@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score, roc_curve
 
 from ..config.settings import Settings
+from ..core.protocols import ExperimentLogger
 from ..data.dataset import split_series
 from ..data.generator import generate_series
 from ..detection.scorer import fuse
@@ -57,7 +59,7 @@ def run_training(
     settings: Settings,
     out_dir: Path,
     sweep: bool = False,
-    logger=None,
+    logger: ExperimentLogger | None = None,
 ) -> TrainingResult:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -352,7 +354,9 @@ def _run_ablations(settings: Settings) -> dict[str, Any]:
 _MAX_SPLIT_RETRIES = 20
 
 
-def _generate_valid_splits(settings: Settings, seed: int):
+def _generate_valid_splits(
+    settings: Settings, seed: int
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, int]:
     """Regenerate with deterministic seed offsets until:
     - val and test each contain at least one anomaly, AND
     - the window-level anomaly rate across the full series is within the
@@ -453,8 +457,8 @@ def _log_run(logger, settings: Settings, metrics: dict, ref: _RunArtifacts, out_
         logger.log_metrics(_flatten_metrics(metrics))
         for fname in ("metrics.json", "threshold.json", "metadata.json"):
             logger.log_artifact(out_dir / fname)
-        if ref.if_detector._model is not None:
-            logger.log_model(ref.if_detector._model, IF_NAME)
+        if ref.if_detector.model is not None:
+            logger.log_model(ref.if_detector.model, IF_NAME)
 
 
 def _flatten_params(settings: Settings) -> dict[str, Any]:

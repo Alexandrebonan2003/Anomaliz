@@ -7,7 +7,6 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 
-from ..config.settings import Settings, load_settings
 from ..models.isolation_forest import IFDetector
 from ..models.lstm_autoencoder import LSTMAutoencoder
 from ..preprocessing.normalizer import MinMaxNormalizer
@@ -49,10 +48,6 @@ def load_bundle(bundle_dir: Path) -> Bundle:
         metadata=metadata,
         metrics=metrics,
     )
-
-
-def get_settings() -> Settings:
-    return load_settings()
 
 
 def get_bundle(request: Request) -> Bundle:

@@ -21,6 +21,10 @@ class IFDetector:
         self._score_min: float | None = None
         self._score_max: float | None = None
 
+    @property
+    def model(self) -> IsolationForest | None:
+        return self._model
+
     def fit(self, X: np.ndarray) -> "IFDetector":
         self._model = IsolationForest(**self.params).fit(X)
         raw = -self._model.decision_function(X)

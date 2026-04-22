@@ -9,13 +9,14 @@ WORKDIR /app
 
 # Copy only the dependency manifest first so pip-install is cached separately
 COPY pyproject.toml ./
-# Install a minimal stub so that pip can resolve the package metadata before
-# the source tree is present, then install the real package below.
+# Stub lets pip resolve metadata and install all deps before the real source
+# is copied, preserving layer caching without swallowing errors.
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir ".[dev]" || true
+    && mkdir -p anomaliz \
+    && touch anomaliz/__init__.py \
+    && pip install --no-cache-dir -e ".[dev]"
 
 COPY anomaliz/ anomaliz/
-RUN pip install --no-cache-dir -e .
 
 EXPOSE 8000
 

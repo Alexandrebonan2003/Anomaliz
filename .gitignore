@@ -16,4 +16,6 @@ artifacts/
 
 .ipynb_checkpoints/
 
+.nab_cache/
+
 .DS_Store

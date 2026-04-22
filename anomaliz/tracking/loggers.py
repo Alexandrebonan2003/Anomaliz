@@ -79,7 +79,7 @@ class MLflowLogger:
             mlflow.log_artifact(str(p))
 
     def log_model(self, model: object, artifact_path: str) -> None:
-        """Log a fitted model using the appropriate MLflow flavor."""
+        """Log a fitted sklearn model via the MLflow sklearn flavor."""
         try:
             import sklearn.base
 
@@ -87,14 +87,8 @@ class MLflowLogger:
                 import mlflow.sklearn
 
                 mlflow.sklearn.log_model(model, artifact_path)
-                return
         except ImportError:
             pass
-        # Keras / TF models: log the saved directory as a generic artifact.
-        if hasattr(model, "save") and hasattr(model, "_model"):
-            import mlflow
-
-            mlflow.log_artifact(str(artifact_path))
 
 
 def build_logger(

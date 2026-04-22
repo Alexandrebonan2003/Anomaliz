@@ -16,7 +16,7 @@ class OpenAIBackend:
     def __init__(self, model: str = "gpt-4o-mini", api_key: str | None = None) -> None:
         from langchain_openai import ChatOpenAI
 
-        self._llm = ChatOpenAI(model=model, api_key=api_key or os.environ["OPENAI_API_KEY"])
+        self._llm = ChatOpenAI(model=model, api_key=api_key)
 
     def invoke(self, prompt: str) -> str:
         from langchain_core.messages import HumanMessage
